@@ -12,7 +12,7 @@ class Logger {
   }
 
   debug(message, ...args) {
-    if (process.env.DEBUG) {
+    if (process.env.DEBUG || process.env.NODE_ENV !== 'production') {
       console.debug(`[DEBUG] ${new Date().toISOString()}: ${message}`, ...args);
     }
   }
