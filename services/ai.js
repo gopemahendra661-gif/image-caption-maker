@@ -4,6 +4,9 @@ const logger = require('../utils/logger');
 class AIService {
   constructor() {
     this.apiKey = process.env.OPENROUTER_API_KEY;
+    if (!this.apiKey) {
+      logger.error('OPENROUTER_API_KEY environment variable is not set');
+    }
     this.baseURL = 'https://openrouter.ai/api/v1';
     this.models = [
       'meta-llama/llama-3.1-8b-instruct:free',
@@ -11,23 +14,32 @@ class AIService {
       'mistralai/mistral-7b-instruct:free',
       'openrouter/auto'
     ];
-    this.timeout = 10000;
+    this.timeout = 15000; // Increased to 15 seconds
   }
 
   async getCaptionFromImage(imageBase64) {
-    const prompt = `Describe this image in detail. Be specific about objects, people, colors, actions, setting, and mood. Provide a comprehensive caption that would be useful for accessibility purposes.`;
+    const prompt = `Describe this image in detail. Be specific about objects, people, colors, actions, setting, and mood. Provide a comprehensive caption that would be useful for accessibility purposes. Keep it under 200 words.`;
+
+    if (!this.apiKey) {
+      throw new Error('AI service configuration error');
+    }
+
+    // Validate base64
+    if (!imageBase64 || typeof imageBase64 !== 'string') {
+      throw new Error('Invalid image data provided');
+    }
 
     for (const model of this.models) {
       try {
         logger.info(`Trying model: ${model}`);
         const caption = await this.tryModel(model, prompt, imageBase64);
-        if (caption) {
-          logger.info(`Success with model: ${model}`);
-          return caption;
+        if (caption && caption.trim().length > 0) {
+          logger.info(`Success with model: ${model}`, { captionLength: caption.length });
+          return caption.trim();
         }
       } catch (error) {
         logger.warn(`Model ${model} failed:`, error.message);
-        continue;
+        // Continue to next model
       }
     }
 
@@ -36,7 +48,10 @@ class AIService {
 
   async tryModel(model, prompt, imageBase64) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+      logger.warn(`Model ${model} timeout after ${this.timeout}ms`);
+    }, this.timeout);
 
     try {
       const response = await axios.post(
@@ -60,7 +75,8 @@ class AIService {
               ]
             }
           ],
-          max_tokens: 300
+          max_tokens: 300,
+          temperature: 0.7
         },
         {
           headers: {
@@ -76,21 +92,36 @@ class AIService {
 
       clearTimeout(timeoutId);
 
-      if (response.data.choices && response.data.choices[0]) {
-        return response.data.choices[0].message.content.trim();
+      if (response.data.choices && response.data.choices[0] && response.data.choices[0].message) {
+        return response.data.choices[0].message.content;
       }
 
+      logger.warn(`No caption generated for model ${model}`, response.data);
       return null;
+
     } catch (error) {
       clearTimeout(timeoutId);
       
-      if (error.code === 'ABORT_ERR') {
+      if (error.name === 'AbortError' || error.code === 'ECONNABORTED') {
         throw new Error(`Model ${model} timeout`);
       }
       
-      if (error.response?.status === 429) {
-        logger.warn(`Rate limit for model ${model}`);
-        throw new Error('Rate limit exceeded');
+      if (error.response) {
+        // OpenRouter API error
+        const status = error.response.status;
+        const data = error.response.data;
+        
+        logger.error(`OpenRouter API error (${status}):`, data);
+        
+        if (status === 401) {
+          throw new Error('Invalid API key');
+        } else if (status === 429) {
+          throw new Error('Rate limit exceeded for this model');
+        } else if (status === 400) {
+          throw new Error('Invalid request to AI service');
+        } else if (status >= 500) {
+          throw new Error('AI service temporarily unavailable');
+        }
       }
       
       throw error;
