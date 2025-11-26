@@ -1,5 +1,4 @@
-const { IncomingForm } = require('formidable');
-const { parse: parseDataURI } = require('data-uri-to-buffer');
+const axios = require('axios');
 const aiService = require('../services/ai');
 const planService = require('../services/plan');
 const logger = require('../utils/logger');
@@ -8,7 +7,7 @@ module.exports = async (req, res) => {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-User-Id, X-User-Plan');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -19,34 +18,45 @@ module.exports = async (req, res) => {
   }
 
   try {
+    logger.info('Received caption request', {
+      contentType: req.headers['content-type'],
+      contentLength: req.headers['content-length']
+    });
+
     let imageBase64;
     
-    // Check if it's base64 data URI
+    // Check if it's base64 data URI from JSON
     if (req.headers['content-type']?.includes('application/json')) {
       const body = await parseJsonBody(req);
+      logger.info('Parsed JSON body', { hasImageData: !!body.imageData });
+      
       if (body.imageData) {
-        imageBase64 = body.imageData;
+        // Clean the base64 data - remove data URL prefix if present
+        imageBase64 = body.imageData.replace(/^data:image\/[a-z]+;base64,/, '');
       } else {
         return res.status(400).json({ error: 'No image data provided' });
       }
     } else {
-      // Handle multipart form data
-      const form = new IncomingForm();
-      const [fields, files] = await parseForm(form, req);
-      
-      if (!files.image) {
-        return res.status(400).json({ error: 'No image file provided' });
-      }
-      
-      const imageFile = files.image[0];
-      const buffer = imageFile.buffer || Buffer.from(await imageFile.arrayBuffer());
-      imageBase64 = buffer.toString('base64');
+      // For multipart form data, we need to use a different approach in serverless
+      return res.status(400).json({ 
+        error: 'Please use JSON format with base64 image data',
+        example: {
+          imageData: 'base64-string-here'
+        }
+      });
+    }
+
+    // Validate base64
+    if (!imageBase64 || imageBase64.length < 100) {
+      return res.status(400).json({ error: 'Invalid image data' });
     }
 
     // Check user plan and quota
     const userId = req.headers['x-user-id'] || 'anonymous';
     const userPlan = req.headers['x-user-plan'] || 'free';
     
+    logger.info('Checking quota', { userId, userPlan });
+
     const planCheck = await planService.checkQuota(userId, userPlan);
     if (!planCheck.allowed) {
       return res.status(429).json({
@@ -57,11 +67,15 @@ module.exports = async (req, res) => {
       });
     }
 
+    logger.info('Quota check passed', { remaining: planCheck.remaining });
+
     // Generate caption
     const caption = await aiService.getCaptionFromImage(imageBase64);
     
     // Record usage
     await planService.recordUsage(userId, userPlan);
+
+    logger.info('Caption generated successfully', { captionLength: caption.length });
 
     res.status(200).json({
       caption,
@@ -81,9 +95,16 @@ module.exports = async (req, res) => {
       });
     }
     
+    if (error.message.includes('AI service is temporarily unavailable')) {
+      return res.status(503).json({
+        error: error.message
+      });
+    }
+    
     res.status(500).json({
       error: 'Failed to generate caption',
-      message: error.message
+      message: error.message,
+      stack: process.env.NODE_ENV === 'production' ? undefined : error.stack
     });
   }
 };
@@ -91,23 +112,24 @@ module.exports = async (req, res) => {
 function parseJsonBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
-    req.on('data', chunk => body += chunk.toString());
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
     req.on('end', () => {
       try {
+        if (!body) {
+          reject(new Error('Empty request body'));
+          return;
+        }
         resolve(JSON.parse(body));
       } catch (e) {
-        reject(new Error('Invalid JSON'));
+        logger.error('JSON parse error:', e.message, { body: body.substring(0, 100) });
+        reject(new Error('Invalid JSON: ' + e.message));
       }
     });
-    req.on('error', reject);
-  });
-}
-
-function parseForm(form, req) {
-  return new Promise((resolve, reject) => {
-    form.parse(req, (err, fields, files) => {
-      if (err) reject(err);
-      else resolve([fields, files]);
+    req.on('error', (err) => {
+      logger.error('Request stream error:', err);
+      reject(err);
     });
   });
 }
