@@ -1,73 +1,107 @@
-async getCaptionFromImage(imageBase64) {
-  const prompt = `You are an expert at creating natural, human-like image captions. 
-  
-  Look at this image and create a SINGLE, FLOWING paragraph that describes it naturally. 
-  
-  DO NOT use bullet points, numbered lists, or separate sections.
-  DO NOT start with "This image shows..." or "In this image..."
-  DO NOT mention that you're describing an image.
-  
-  Just describe what you see in a natural, conversational way as if you're telling a friend about the image.
-  
-  Guidelines:
-  - Write 1-2 sentences maximum
-  - Keep it simple and direct
-  - Focus on the main subject and purpose
-  - Use natural language
-  - No technical formatting
-  
-  Example good caption: "A beautiful sunset over mountains with vibrant orange and purple skies reflecting on a calm lake."
-  Example bad caption: "- Colors: orange and purple - Main objects: mountains and lake - Setting: sunset"`;
+const axios = require('axios');
 
-  for (const model of this.models) {
+class AIService {
+  constructor() {
+    this.apiKey = process.env.OPENROUTER_API_KEY;
+    console.log('🔍 AI Service Initialized - API Key:', this.apiKey ? 'PRESENT' : 'MISSING');
+    
+    if (!this.apiKey) {
+      console.error('❌ OPENROUTER_API_KEY is missing!');
+    }
+    
+    this.models = [
+      'meta-llama/llama-3.1-8b-instruct:free',
+      'google/gemma-2-9b-it:free',
+      'mistralai/mistral-7b-instruct:free'
+    ];
+    this.timeout = 15000;
+  }
+
+  async getCaptionFromImage(imageBase64) {
     try {
-      logger.info(`Trying model: ${model}`);
-      const caption = await this.tryModel(model, prompt, imageBase64);
+      console.log('🔍 getCaptionFromImage called, image size:', imageBase64?.length);
       
-      if (caption && this.isGoodCaption(caption)) {
-        logger.info(`✅ Success with model: ${model}`);
-        return this.cleanCaption(caption);
-      } else {
-        logger.warn(`Model ${model} returned poor quality caption: ${caption}`);
+      if (!this.apiKey) {
+        throw new Error('OpenRouter API key is missing');
       }
+
+      if (!imageBase64 || imageBase64.length < 100) {
+        throw new Error('Invalid image data');
+      }
+
+      const prompt = `Describe this image in one simple, natural sentence.`;
+      
+      for (const model of this.models) {
+        try {
+          console.log(`🔍 Trying model: ${model}`);
+          const caption = await this.tryModel(model, prompt, imageBase64);
+          
+          if (caption && caption.trim().length > 10) {
+            console.log(`✅ Model ${model} succeeded`);
+            return caption.trim();
+          }
+        } catch (error) {
+          console.log(`❌ Model ${model} failed:`, error.message);
+          continue;
+        }
+      }
+      
+      throw new Error('All AI models failed');
+      
     } catch (error) {
-      logger.warn(`Model ${model} failed:`, error.message);
-      continue;
+      console.error('❌ getCaptionFromImage error:', error);
+      throw error;
     }
   }
 
-  throw new Error('AI service is temporarily unavailable. Try again.');
+  async tryModel(model, prompt, imageBase64) {
+    console.log(`🔍 Calling OpenRouter API for model: ${model}`);
+    
+    try {
+      const response = await axios.post(
+        'https://openrouter.ai/api/v1/chat/completions',
+        {
+          model: model,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: prompt },
+                { 
+                  type: "image_url", 
+                  image_url: { url: `data:image/jpeg;base64,${imageBase64}` }
+                }
+              ]
+            }
+          ],
+          max_tokens: 100
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: this.timeout
+        }
+      );
+
+      console.log('✅ OpenRouter API response received');
+      
+      if (response.data.choices?.[0]?.message?.content) {
+        return response.data.choices[0].message.content;
+      }
+      
+      throw new Error('Invalid response format');
+      
+    } catch (error) {
+      console.error(`❌ OpenRouter API error for ${model}:`, {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message
+      });
+      throw error;
+    }
+  }
 }
 
-// Check if caption is natural and not technical
-isGoodCaption(caption) {
-  const badPatterns = [
-    /^- /, // Bullet points
-    /^•/, // Bullet points
-    /\d\./, // Numbered lists
-    /main objects:/i,
-    /colors:/i, 
-    /setting:/i,
-    /this image shows/i,
-    /in this image/i,
-    /the image depicts/i
-  ];
-  
-  const hasBadPattern = badPatterns.some(pattern => pattern.test(caption));
-  const isTooShort = caption.trim().length < 20;
-  const isTooLong = caption.trim().length > 500;
-  
-  return !hasBadPattern && !isTooShort && !isTooLong;
-}
-
-// Clean up the caption
-cleanCaption(caption) {
-  // Remove common AI prefixes
-  const cleaned = caption
-    .replace(/^(caption|description|image|picture):?\s*/i, '')
-    .replace(/["']/g, '')
-    .trim();
-  
-  // Ensure it starts with capital letter and ends with period
-  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1).replace(/\.$/, '') + '.';
-}
+module.exports = new AIService();
