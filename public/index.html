@@ -5,7 +5,438 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Image Captioning Tool</title>
     <style>
-        /* ... (keep the same CSS styles from previous version) ... */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+            overflow: hidden;
+            transition: transform 0.3s ease;
+        }
+
+        .container:hover {
+            transform: translateY(-5px);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .header h1 {
+            font-size: 2.8rem;
+            margin-bottom: 12px;
+            font-weight: 700;
+            background: linear-gradient(45deg, #fff, #e2e8f0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.2rem;
+            font-weight: 300;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .quota-info {
+            background: linear-gradient(135deg, #c6f6d5, #b2f5ea);
+            border: 2px solid #68d391;
+            border-radius: 12px;
+            padding: 18px;
+            margin-bottom: 25px;
+            text-align: center;
+            font-weight: 600;
+            color: #22543d;
+            box-shadow: 0 4px 12px rgba(104, 211, 145, 0.2);
+        }
+
+        .error {
+            background: linear-gradient(135deg, #fed7d7, #feebc8);
+            border: 2px solid #fc8181;
+            border-radius: 12px;
+            padding: 18px;
+            margin-bottom: 25px;
+            color: #c53030;
+            font-weight: 500;
+            display: none;
+            box-shadow: 0 4px 12px rgba(252, 129, 129, 0.2);
+        }
+
+        .upload-area {
+            border: 3px dashed #cbd5e0;
+            border-radius: 16px;
+            padding: 70px 30px;
+            text-align: center;
+            margin-bottom: 35px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            background: #f8fafc;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-area::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+            transition: left 0.5s;
+        }
+
+        .upload-area:hover::before {
+            left: 100%;
+        }
+
+        .upload-area:hover, .upload-area.dragover {
+            border-color: #667eea;
+            background: #edf2f7;
+            transform: scale(1.02);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.15);
+        }
+
+        .upload-area i {
+            font-size: 4rem;
+            color: #a0aec0;
+            margin-bottom: 25px;
+            display: block;
+            transition: transform 0.3s ease;
+        }
+
+        .upload-area:hover i {
+            transform: scale(1.1) translateY(-5px);
+            color: #667eea;
+        }
+
+        .upload-text {
+            font-size: 1.4rem;
+            color: #2d3748;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .upload-subtext {
+            color: #718096;
+            font-size: 1rem;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .preview-area {
+            display: none;
+            margin-bottom: 30px;
+            text-align: center;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        #imagePreview {
+            max-width: 100%;
+            max-height: 350px;
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+            border: 3px solid #e2e8f0;
+            transition: transform 0.3s ease;
+        }
+
+        #imagePreview:hover {
+            transform: scale(1.02);
+        }
+
+        .actions {
+            text-align: center;
+            margin-bottom: 35px;
+        }
+
+        #generateBtn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 18px 50px;
+            font-size: 1.2rem;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        #generateBtn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        #generateBtn:hover::before {
+            left: 100%;
+        }
+
+        #generateBtn:hover:not(:disabled) {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 35px rgba(102, 126, 234, 0.4);
+        }
+
+        #generateBtn:active:not(:disabled) {
+            transform: translateY(-1px);
+        }
+
+        #generateBtn:disabled {
+            background: linear-gradient(135deg, #a0aec0, #718096);
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: 0 4px 15px rgba(160, 174, 192, 0.3);
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 40px 0;
+            animation: fadeIn 0.5s ease;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 25px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-size: 1.1rem;
+            color: #4a5568;
+            font-weight: 500;
+        }
+
+        .result-area {
+            display: none;
+            background: linear-gradient(135deg, #f7fafc, #edf2f7);
+            border-radius: 16px;
+            padding: 35px;
+            margin-top: 30px;
+            border: 2px solid #e2e8f0;
+            animation: slideUp 0.5s ease;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        }
+
+        @keyframes slideUp {
+            from { 
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to { 
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .result-area h3 {
+            color: #2d3748;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        #captionResult {
+            color: #4a5568;
+            line-height: 1.8;
+            font-size: 1.15rem;
+            text-align: center;
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            border-left: 5px solid #667eea;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+
+        .plan-badge {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 6px 18px;
+            border-radius: 25px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .success-message {
+            background: linear-gradient(135deg, #c6f6d5, #b2f5ea);
+            border: 2px solid #68d391;
+            border-radius: 12px;
+            padding: 15px;
+            margin-top: 20px;
+            text-align: center;
+            color: #22543d;
+            font-weight: 500;
+            display: none;
+            animation: fadeIn 0.5s ease;
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            body {
+                padding: 15px;
+            }
+            
+            .container {
+                margin: 0;
+                border-radius: 12px;
+            }
+            
+            .content {
+                padding: 25px;
+            }
+            
+            .header {
+                padding: 30px 20px;
+            }
+            
+            .header h1 {
+                font-size: 2.2rem;
+            }
+            
+            .header p {
+                font-size: 1.1rem;
+            }
+            
+            .upload-area {
+                padding: 50px 20px;
+            }
+            
+            .upload-text {
+                font-size: 1.2rem;
+            }
+            
+            #generateBtn {
+                padding: 16px 40px;
+                font-size: 1.1rem;
+                width: 100%;
+                max-width: 300px;
+            }
+            
+            .result-area {
+                padding: 25px;
+            }
+            
+            #captionResult {
+                padding: 20px;
+                font-size: 1.1rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .header h1 {
+                font-size: 1.8rem;
+            }
+            
+            .header p {
+                font-size: 1rem;
+            }
+            
+            .upload-area {
+                padding: 40px 15px;
+            }
+            
+            .upload-text {
+                font-size: 1.1rem;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+        }
+
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {
+            .container {
+                background: #2d3748;
+                color: #e2e8f0;
+            }
+            
+            .upload-area {
+                background: #4a5568;
+                border-color: #718096;
+            }
+            
+            .upload-text {
+                color: #e2e8f0;
+            }
+            
+            .upload-subtext {
+                color: #a0aec0;
+            }
+            
+            .result-area {
+                background: #4a5568;
+                border-color: #718096;
+            }
+            
+            #captionResult {
+                background: #2d3748;
+                color: #e2e8f0;
+            }
+        }
+
+        /* Focus styles for accessibility */
+        button:focus, .upload-area:focus {
+            outline: 3px solid #667eea;
+            outline-offset: 2px;
+        }
+
+        /* Smooth scrolling */
+        html {
+            scroll-behavior: smooth;
+        }
     </style>
 </head>
 <body>
@@ -17,12 +448,12 @@
 
         <div class="content">
             <div class="quota-info" id="quotaInfo">
-                Free plan: <span id="remainingCount">5</span> images remaining today
+                🎉 Free plan: <span id="remainingCount">5</span> images remaining today
             </div>
 
             <div class="error" id="errorMessage"></div>
 
-            <div class="upload-area" id="uploadArea">
+            <div class="upload-area" id="uploadArea" tabindex="0">
                 <i>📷</i>
                 <div class="upload-text">Click to upload or drag & drop an image</div>
                 <div class="upload-subtext">Supports JPG, PNG, WebP (Max 5MB)</div>
@@ -34,17 +465,24 @@
             </div>
 
             <div class="actions">
-                <button id="generateBtn" disabled>Generate Caption</button>
+                <button id="generateBtn" disabled>Generate Caption ✨</button>
             </div>
 
             <div class="loading" id="loading">
                 <div class="spinner"></div>
-                <div>Generating caption with AI... This may take 10-20 seconds</div>
+                <div class="loading-text">Generating caption with AI... This may take 10-20 seconds</div>
             </div>
 
             <div class="result-area" id="resultArea">
-                <h3>AI-Generated Caption <span class="plan-badge" id="planBadge">free</span></h3>
+                <h3>
+                    AI-Generated Caption 
+                    <span class="plan-badge" id="planBadge">free</span>
+                </h3>
                 <div id="captionResult"></div>
+            </div>
+
+            <div class="success-message" id="successMessage">
+                ✅ Caption generated successfully!
             </div>
         </div>
     </div>
@@ -64,6 +502,7 @@
                 this.remainingCount = document.getElementById('remainingCount');
                 this.planBadge = document.getElementById('planBadge');
                 this.errorMessage = document.getElementById('errorMessage');
+                this.successMessage = document.getElementById('successMessage');
 
                 this.currentFile = null;
                 this.userId = this.generateUserId();
@@ -89,7 +528,6 @@
                     this.planBadge.textContent = this.userPlan;
                 }
                 
-                // Load remaining count from localStorage if available
                 const savedRemaining = localStorage.getItem('remainingCount');
                 if (savedRemaining) {
                     this.remainingCount.textContent = savedRemaining;
@@ -97,14 +535,17 @@
             }
 
             initEventListeners() {
+                // Click to upload
                 this.uploadArea.addEventListener('click', () => {
                     this.fileInput.click();
                 });
 
+                // File input change
                 this.fileInput.addEventListener('change', (e) => {
                     this.handleFileSelect(e.target.files[0]);
                 });
 
+                // Drag and drop
                 this.uploadArea.addEventListener('dragover', (e) => {
                     e.preventDefault();
                     this.uploadArea.classList.add('dragover');
@@ -120,6 +561,15 @@
                     this.handleFileSelect(e.dataTransfer.files[0]);
                 });
 
+                // Keyboard accessibility
+                this.uploadArea.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        this.fileInput.click();
+                    }
+                });
+
+                // Generate button
                 this.generateBtn.addEventListener('click', () => {
                     this.generateCaption();
                 });
@@ -140,6 +590,7 @@
 
                 this.currentFile = file;
                 this.hideError();
+                this.hideSuccess();
 
                 const reader = new FileReader();
                 reader.onload = (e) => {
@@ -149,6 +600,9 @@
                     
                     // Store the base64 data for later use
                     this.currentFile.base64 = e.target.result.split(',')[1];
+                };
+                reader.onerror = () => {
+                    this.showError('Failed to read the image file');
                 };
                 reader.readAsDataURL(file);
             }
@@ -163,6 +617,7 @@
                 this.loading.style.display = 'block';
                 this.resultArea.style.display = 'none';
                 this.hideError();
+                this.hideSuccess();
 
                 try {
                     console.log('Sending request to API...');
@@ -183,10 +638,11 @@
                     console.log('API response:', data);
 
                     if (!response.ok) {
-                        throw new Error(data.error || `Server error: ${response.status}`);
+                        throw new Error(data.error || data.message || `Server error: ${response.status}`);
                     }
 
                     this.displayResult(data);
+                    this.showSuccess();
                     
                 } catch (error) {
                     console.error('Caption generation failed:', error);
@@ -212,16 +668,20 @@
                 // Update quota display and localStorage
                 localStorage.setItem('remainingCount', data.remaining);
                 if (data.plan === 'paid') {
-                    this.quotaInfo.innerHTML = 'Paid plan: Unlimited generations';
+                    this.quotaInfo.innerHTML = '🚀 Paid plan: Unlimited generations';
                 } else {
                     this.quotaInfo.innerHTML = 
-                        `Free plan: ${data.remaining} images remaining today`;
+                        `🎉 Free plan: ${data.remaining} images remaining today`;
                 }
+
+                // Scroll to result
+                this.resultArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
 
             showError(message) {
                 this.errorMessage.textContent = message;
                 this.errorMessage.style.display = 'block';
+                this.hideSuccess();
                 
                 // Auto-hide error after 10 seconds
                 setTimeout(() => {
@@ -232,12 +692,35 @@
             hideError() {
                 this.errorMessage.style.display = 'none';
             }
+
+            showSuccess() {
+                this.successMessage.style.display = 'block';
+                setTimeout(() => {
+                    this.hideSuccess();
+                }, 5000);
+            }
+
+            hideSuccess() {
+                this.successMessage.style.display = 'none';
+            }
         }
 
         // Initialize the app when the page loads
         document.addEventListener('DOMContentLoaded', () => {
             new ImageCaptionApp();
         });
+
+        // Add some fun console message
+        console.log(`
+🎨 AI Image Captioning Tool Loaded!
+✨ Features:
+   - Drag & drop image upload
+   - Multiple AI model fallback
+   - Free/Paid plan system
+   - Beautiful responsive design
+
+Ready to generate some captions! 📷
+        `);
     </script>
 </body>
 </html>
